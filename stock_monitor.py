@@ -23,7 +23,6 @@ PRODUCT_URLS = [
     "https://www.ci-medical.com/dental/catalog_item/801Y697",
     "https://www.ci-medical.com/dental/catalog_item/801Y168",
     "https://www.ci-medical.com/dental/catalog_item/801Y774",
-    "https://www.ci-medical.com/dental/catalog_item/801Y681",
     # 追加商品のURLをここに記載
     # "https://www.ci-medical.com/dental/catalog_item/商品ID2",
     # "https://www.ci-medical.com/dental/catalog_item/商品ID3",
