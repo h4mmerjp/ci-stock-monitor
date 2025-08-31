@@ -21,6 +21,7 @@ LOGIN_URL = os.getenv("LOGIN_URL", "https://www.ci-medical.com/accounts/sign_in"
 PRODUCT_URLS = [
     "https://www.ci-medical.com/dental/catalog_item/801Y697",
     "https://www.ci-medical.com/dental/catalog_item/801Y846",
+    "https://www.ci-medical.com/dental/catalog_item/801Y681",
     # 追加商品のURLをここに記載
     # "https://www.ci-medical.com/dental/catalog_item/商品ID2",
     # "https://www.ci-medical.com/dental/catalog_item/商品ID3",
@@ -156,14 +157,41 @@ def get_stock_status_with_selenium(product_url):
         # ページソースを取得してBeautifulSoupで解析
         soup = BeautifulSoup(driver.page_source, "html.parser")
 
-        # 在庫状況を示す要素を特定
-        # まず明示的な在庫状況を確認
+        # **まず在庫なしを示すメッセージを優先的に確認**
         stock_status_element = soup.find("span", class_="product-stock__status")
-        if stock_status_element and "在庫あり" in stock_status_element.text:
-            print("在庫ありと判断しました。（在庫状況表示で「在庫あり」が見つかったため）")
-            return "在庫あり"
-        
-        # 「買い物カゴに入れる」ボタンの有無を確認
+        if stock_status_element:
+            stock_text = stock_status_element.text.strip()
+            stock_classes = stock_status_element.get("class", [])
+            
+            if "在庫なし" in stock_text or "is-soldout" in stock_classes:
+                print(f"在庫なしと判断しました。（在庫状況表示: {stock_text}, クラス: {stock_classes}）")
+                return "在庫なし"
+            elif "在庫あり" in stock_text:
+                print(f"在庫ありと判断しました。（在庫状況表示: {stock_text}）")
+                return "在庫あり"
+
+        # **「在庫なし」ボタンを確認**
+        cart_button = soup.find("a", class_="button-cart")
+        if cart_button:
+            button_text = cart_button.text.strip()
+            button_classes = cart_button.get("class", [])
+            
+            if "在庫なし" in button_text or "button-cart--disabled" in button_classes:
+                print(f"在庫なしと判断しました。（ボタン表示: {button_text}, クラス: {button_classes}）")
+                return "在庫なし"
+            elif "買い物カゴ" in button_text or "カート" in button_text:
+                print(f"在庫ありと判断しました。（ボタン表示: {button_text}）")
+                return "在庫あり"
+
+        # **購入フォームの状態を確認**
+        product_form = soup.find("div", class_="product-form")
+        if product_form:
+            form_classes = product_form.get("class", [])
+            if "is-disabled" in form_classes:
+                print(f"在庫なしと判断しました。（購入フォームが無効化されているため: {form_classes}）")
+                return "在庫なし"
+
+        # **「買い物カゴに入れる」ボタンの有無を確認（より広範囲）**
         cart_button_selectors = [
             {"class": "button-cart"},
             {"class": "btn-cart"},
@@ -173,25 +201,13 @@ def get_stock_status_with_selenium(product_url):
         
         for selector in cart_button_selectors:
             add_to_cart_button = soup.find("a", selector) or soup.find("button", selector)
-            if add_to_cart_button and ("買い物カゴ" in add_to_cart_button.text or "カート" in add_to_cart_button.text):
-                print(f"在庫ありと判断しました。（「買い物カゴに入れる」ボタンが見つかったため: {selector}）")
-                return "在庫あり"
+            if add_to_cart_button:
+                button_text = add_to_cart_button.text.strip()
+                if "買い物カゴ" in button_text or "カート" in button_text:
+                    print(f"在庫ありと判断しました。（「買い物カゴに入れる」ボタンが見つかったため: {selector}）")
+                    return "在庫あり"
 
-        # 価格表示の確認
-        price_selectors = [
-            {"class": "product-price__txt"},
-            {"class": "item-price__num"},
-            {"class": "price"},
-            {"class": "item-price"},
-        ]
-        
-        for selector in price_selectors:
-            price_element = soup.find("p", selector) or soup.find("span", selector) or soup.find("div", selector)
-            if price_element and price_element.text.strip() and "円" in price_element.text:
-                print(f"在庫ありと判断しました。（価格要素が見つかったため: {selector}）")
-                return "在庫あり"
-        
-        # 在庫なしを示すメッセージの確認
+        # **在庫なしを示すテキストの確認**
         out_of_stock_indicators = [
             "在庫なし", "品切れ", "売り切れ", "完売", "Out of Stock", "Sold Out"
         ]
@@ -202,7 +218,22 @@ def get_stock_status_with_selenium(product_url):
                 print(f"在庫なしと判断しました。（「{indicator}」が見つかったため）")
                 return "在庫なし"
 
-        print("在庫なしと判断しました。（「買い物カゴに入れる」ボタンも価格要素も見つからないため）")
+        # **最後の手段として価格表示を確認（ただし、上記の在庫なし条件をクリアした場合のみ）**
+        price_selectors = [
+            {"class": "product-price__txt"},
+            {"class": "item-price__num"},
+            {"class": "price"},
+            {"class": "item-price"},
+        ]
+        
+        for selector in price_selectors:
+            price_element = soup.find("p", selector) or soup.find("span", selector) or soup.find("div", selector)
+            if price_element and price_element.text.strip() and "円" in price_element.text:
+                # 価格が表示されているが、上記の在庫確認で在庫なしの兆候がない場合のみ在庫ありとする
+                print(f"在庫ありと判断しました。（価格要素が見つかり、在庫なしの兆候がないため: {selector}）")
+                return "在庫あり"
+
+        print("在庫状況を判定できませんでした。デフォルトで在庫なしとします。")
         return "在庫なし"
 
     except TimeoutException as e:
