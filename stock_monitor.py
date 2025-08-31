@@ -19,9 +19,10 @@ LOGIN_URL = os.getenv("LOGIN_URL", "https://www.ci-medical.com/accounts/sign_in"
 
 # 監視対象商品のリスト
 PRODUCT_URLS = [
+    "https://www.ci-medical.com/dental/catalog_item/801Y880",
     "https://www.ci-medical.com/dental/catalog_item/801Y697",
-    "https://www.ci-medical.com/dental/catalog_item/801Y846",
-    "https://www.ci-medical.com/dental/catalog_item/801Y681",
+    "https://www.ci-medical.com/dental/catalog_item/801Y168",
+    "https://www.ci-medical.com/dental/catalog_item/801Y774",
     # 追加商品のURLをここに記載
     # "https://www.ci-medical.com/dental/catalog_item/商品ID2",
     # "https://www.ci-medical.com/dental/catalog_item/商品ID3",
