@@ -10,7 +10,7 @@ on:
 jobs:
   monitor_stock:
     runs-on: ubuntu-latest
-    timeout-minutes: 15  # タイムアウトを15分に延長
+    timeout-minutes: 20  # 複数商品チェックのため時間を延長
 
     steps:
     - name: Checkout repository
@@ -34,7 +34,6 @@ jobs:
         RECEIVER_EMAIL: ${{ secrets.RECEIVER_EMAIL }}
         CI_MEDICAL_USERNAME: ${{ secrets.CI_MEDICAL_USERNAME }}
         CI_MEDICAL_PASSWORD: ${{ secrets.CI_MEDICAL_PASSWORD }}
-        PRODUCT_URL: https://www.ci-medical.com/dental/catalog_item/801Y697
         LOGIN_URL: https://www.ci-medical.com/accounts/sign_in
       run: |
         python stock_monitor.py
@@ -53,7 +52,7 @@ jobs:
             owner: context.repo.owner,
             repo: context.repo.repo,
             title: 'CI Medical 在庫通知: 在庫あり',
-            body: 'CI Medicalの製品ページ (${{ env.PRODUCT_URL }}) の在庫状況が「在庫あり」に変化しました。\n確認してください。'
+            body: 'CI Medicalで在庫がある商品が見つかりました。\nメールで詳細を確認してください。'
           })
 
     - name: Create Issue on Error
