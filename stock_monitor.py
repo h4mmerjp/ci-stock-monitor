@@ -52,9 +52,15 @@ def get_stock_status_with_selenium():
 
         print("ログインページにアクセス中...")
         driver.get(LOGIN_URL)
-        WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located((By.NAME, "customer[email]"))
+        WebDriverWait(driver, 30).until(
+            EC.presence_of_element_located((By.NAME, 'customer[email]'))
         )
+
+        # ログインボタンが表示されるまで待機
+        WebDriverWait(driver, 30).until(
+            EC.element_to_be_clickable((By.CSS_SELECTOR, 'button[type="submit"]'))
+        )
+
 
         # ログイン処理
         print("ログイン情報を入力中...")
