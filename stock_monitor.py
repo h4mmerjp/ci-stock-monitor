@@ -12,10 +12,19 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import WebDriverException, TimeoutException
 import time
+import json
 
 # 設定
-PRODUCT_URL = os.getenv("PRODUCT_URL", "https://www.ci-medical.com/dental/catalog_item/801Y697")
 LOGIN_URL = os.getenv("LOGIN_URL", "https://www.ci-medical.com/accounts/sign_in")
+
+# 監視対象商品のリスト
+PRODUCT_URLS = [
+    "https://www.ci-medical.com/dental/catalog_item/801Y697",
+    "https://www.ci-medical.com/dental/catalog_item/801Y846/",
+    # 追加商品のURLをここに記載
+    # "https://www.ci-medical.com/dental/catalog_item/商品ID2",
+    # "https://www.ci-medical.com/dental/catalog_item/商品ID3",
+]
 
 # ログイン情報 (環境変数から取得することを推奨)
 CI_MEDICAL_USERNAME = os.getenv("CI_MEDICAL_USERNAME")
@@ -23,15 +32,15 @@ CI_MEDICAL_PASSWORD = os.getenv("CI_MEDICAL_PASSWORD")
 
 # 通知設定 (環境変数から取得することを推奨)
 SENDER_EMAIL = os.getenv("SENDER_EMAIL")
-SENDER_PASSWORD = os.getenv("SENDER_PASSWORD") # アプリパスワードなど
+SENDER_PASSWORD = os.getenv("SENDER_PASSWORD")
 RECEIVER_EMAIL = os.getenv("RECEIVER_EMAIL")
 SMTP_SERVER = os.getenv("SMTP_SERVER", "smtp.gmail.com")
 SMTP_PORT = int(os.getenv("SMTP_PORT", 587))
 
 # 以前の在庫状況を保存するファイル
-LAST_STATUS_FILE = "last_stock_status.txt"
+LAST_STATUS_FILE = "last_stock_status.json"
 
-def get_stock_status_with_selenium():
+def get_stock_status_with_selenium(product_url):
     """Seleniumを使用してウェブページから在庫状況を取得する"""
     options = Options()
     options.add_argument("--headless")
@@ -51,8 +60,8 @@ def get_stock_status_with_selenium():
     driver = None
     try:
         driver = webdriver.Chrome(options=options)
-        driver.set_page_load_timeout(60)  # タイムアウトを60秒に延長
-        driver.implicitly_wait(10)  # 暗黙的待機を追加
+        driver.set_page_load_timeout(60)
+        driver.implicitly_wait(10)
         
         # WebDriver検出を回避
         driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
@@ -107,15 +116,15 @@ def get_stock_status_with_selenium():
         # ログイン後の処理を待機
         time.sleep(3)
         
-        print(f"商品ページにアクセス中: {PRODUCT_URL}")
-        driver.get(PRODUCT_URL)
+        print(f"商品ページにアクセス中: {product_url}")
+        driver.get(product_url)
         
         # ページが読み込まれるまで待機
         WebDriverWait(driver, 30).until(
             EC.presence_of_element_located((By.TAG_NAME, "body"))
         )
 
-        # 業種選択のポップアップが表示された場合、閉じる
+        # ポップアップが表示された場合、閉じる
         try:
             close_selectors = [
                 "//button[contains(text(), 'ウィンドウを閉じる')]",
@@ -224,37 +233,101 @@ def send_email_notification(subject, body):
     except Exception as e:
         print(f"メールの送信中にエラーが発生しました: {e}")
 
+def load_last_status():
+    """前回の在庫状況を読み込む"""
+    if os.path.exists(LAST_STATUS_FILE):
+        try:
+            with open(LAST_STATUS_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except:
+            return {}
+    return {}
+
+def save_current_status(status_dict):
+    """現在の在庫状況を保存する"""
+    with open(LAST_STATUS_FILE, "w", encoding="utf-8") as f:
+        json.dump(status_dict, f, ensure_ascii=False, indent=2)
+
 def main():
     print(f"[{datetime.now()}] 在庫状況を確認中...")
-    current_status = get_stock_status_with_selenium()
+    
+    # 前回の状況を読み込み
+    last_status_dict = load_last_status()
+    current_status_dict = {}
+    
+    # 在庫ありの商品リスト
+    in_stock_products = []
+    changed_products = []
+    error_products = []
+    
+    # 各商品の在庫状況をチェック
+    for product_url in PRODUCT_URLS:
+        print(f"\n商品チェック中: {product_url}")
+        current_status = get_stock_status_with_selenium(product_url)
+        current_status_dict[product_url] = current_status
+        
+        # エラーの場合
+        if current_status.startswith("エラー"):
+            error_products.append({"url": product_url, "error": current_status})
+            continue
+        
+        # 前回の状況と比較
+        last_status = last_status_dict.get(product_url, "初回")
+        
+        if current_status != last_status:
+            changed_products.append({
+                "url": product_url,
+                "old_status": last_status,
+                "new_status": current_status
+            })
+            print(f"在庫状況が変化: {last_status} -> {current_status}")
+        
+        # 在庫ありの商品を記録
+        if current_status == "在庫あり":
+            in_stock_products.append(product_url)
 
-    if current_status.startswith("エラー"):
-        print(f"在庫状況の取得中にエラーが発生しました: {current_status}。通知は行いません。")
+    # 現在の状況を保存
+    save_current_status(current_status_dict)
+    
+    # 通知処理
+    if error_products:
+        error_urls = "\n".join([f"- {item['url']}: {item['error']}" for item in error_products])
         send_email_notification(
-            f"CI Medical 在庫監視エラー: {current_status}",
-            f"CI Medicalの製品ページ ({PRODUCT_URL}) の在庫状況取得中にエラーが発生しました。\nエラー詳細: {current_status}\nスクリプトの実行環境またはログイン情報を確認してください。"
+            "CI Medical 在庫監視エラー",
+            f"以下の商品で在庫状況取得エラーが発生しました:\n\n{error_urls}\n\nスクリプトの実行環境またはログイン情報を確認してください。"
         )
-        # エラーファイルを作成してGitHub Actionsで状態を把握できるようにする
-        with open(LAST_STATUS_FILE, "w") as f:
-            f.write("エラー")
-        return
-
-    last_status = None
-    if os.path.exists(LAST_STATUS_FILE):
-        with open(LAST_STATUS_FILE, "r") as f:
-            last_status = f.read().strip()
-
-    # 現在の状態を保存
-    with open(LAST_STATUS_FILE, "w") as f:
-        f.write(current_status)
-
-    if current_status != last_status:
-        print(f"在庫状況が変化しました: {last_status if last_status else '初回'} -> {current_status}")
-        subject = f"CI Medical 在庫通知: {current_status}"
-        body = f"CI Medicalの製品ページ ({PRODUCT_URL}) の在庫状況が「{current_status}」に変化しました。\n確認してください。"
+    
+    if changed_products:
+        # 変化があった商品の通知
+        change_summary = []
+        for item in changed_products:
+            change_summary.append(f"- {item['url']}\n  {item['old_status']} → {item['new_status']}")
+        
+        change_text = "\n".join(change_summary)
+        
+        subject = "CI Medical 在庫状況変化通知"
+        body = f"以下の商品で在庫状況が変化しました:\n\n{change_text}"
+        
+        # 在庫ありの商品がある場合、URLリストを追加
+        if in_stock_products:
+            body += "\n\n【現在在庫がある商品】\n"
+            for url in in_stock_products:
+                body += f"- {url}\n"
+        
         send_email_notification(subject, body)
     else:
-        print(f"在庫状況に変化はありません: {current_status}")
+        print("在庫状況に変化はありませんでした。")
+    
+    # GitHub Actions用に在庫ありの商品があるかを記録
+    if in_stock_products:
+        with open("last_stock_status.txt", "w") as f:
+            f.write("在庫あり")
+    elif error_products:
+        with open("last_stock_status.txt", "w") as f:
+            f.write("エラー")
+    else:
+        with open("last_stock_status.txt", "w") as f:
+            f.write("在庫なし")
 
 if __name__ == "__main__":
     main()
