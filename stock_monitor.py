@@ -20,7 +20,7 @@ LOGIN_URL = os.getenv("LOGIN_URL", "https://www.ci-medical.com/accounts/sign_in"
 # 監視対象商品のリスト
 PRODUCT_URLS = [
     "https://www.ci-medical.com/dental/catalog_item/801Y697",
-    "https://www.ci-medical.com/dental/catalog_item/801Y846/",
+    "https://www.ci-medical.com/dental/catalog_item/801Y846",
     # 追加商品のURLをここに記載
     # "https://www.ci-medical.com/dental/catalog_item/商品ID2",
     # "https://www.ci-medical.com/dental/catalog_item/商品ID3",
@@ -157,8 +157,15 @@ def get_stock_status_with_selenium(product_url):
         soup = BeautifulSoup(driver.page_source, "html.parser")
 
         # 在庫状況を示す要素を特定
+        # まず明示的な在庫状況を確認
+        stock_status_element = soup.find("span", class_="product-stock__status")
+        if stock_status_element and "在庫あり" in stock_status_element.text:
+            print("在庫ありと判断しました。（在庫状況表示で「在庫あり」が見つかったため）")
+            return "在庫あり"
+        
         # 「買い物カゴに入れる」ボタンの有無を確認
         cart_button_selectors = [
+            {"class": "button-cart"},
             {"class": "btn-cart"},
             {"class": "add-to-cart"},
             {"class": "cart-button"},
@@ -167,20 +174,21 @@ def get_stock_status_with_selenium(product_url):
         for selector in cart_button_selectors:
             add_to_cart_button = soup.find("a", selector) or soup.find("button", selector)
             if add_to_cart_button and ("買い物カゴ" in add_to_cart_button.text or "カート" in add_to_cart_button.text):
-                print("在庫ありと判断しました。（「買い物カゴに入れる」ボタンが見つかったため）")
+                print(f"在庫ありと判断しました。（「買い物カゴに入れる」ボタンが見つかったため: {selector}）")
                 return "在庫あり"
 
         # 価格表示の確認
         price_selectors = [
+            {"class": "product-price__txt"},
             {"class": "item-price__num"},
             {"class": "price"},
             {"class": "item-price"},
         ]
         
         for selector in price_selectors:
-            price_element = soup.find("span", selector) or soup.find("div", selector)
-            if price_element and price_element.text.strip() and price_element.text.strip() != "":
-                print("在庫ありと判断しました。（価格要素が見つかったため）")
+            price_element = soup.find("p", selector) or soup.find("span", selector) or soup.find("div", selector)
+            if price_element and price_element.text.strip() and "円" in price_element.text:
+                print(f"在庫ありと判断しました。（価格要素が見つかったため: {selector}）")
                 return "在庫あり"
         
         # 在庫なしを示すメッセージの確認
