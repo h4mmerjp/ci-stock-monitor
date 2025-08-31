@@ -7,12 +7,10 @@ from email.mime.text import MIMEText
 from datetime import datetime
 
 # 設定
-PRODUCT_URL = 'https://www.ci-medical.com/dental/catalog_item/801Y697'
-# ログインが必要な場合、Cookieを設定してください。ブラウザから取得できます。
-# 例: COOKIES = {'PHPSESSID': 'your_session_id', 'ci_medical_login': 'your_login_cookie'}
-COOKIES = {}
-
-# 通知設定 (環境変数から取得することを推奨)
+PRODUCT_URL = 'https://www.ci-medical.com/dental/catalog_COOKIES = {} # ログインが必要な場合、ここにクッキーを設定してください。ブラウザの開発者ツールから取得できます。
+                 # 例: COOKIES = {"PHPSESSID": "your_session_id", "ci_medical_login": "your_login_cookie"}
+                 # クッキーは有効期限があるため、定期的な更新が必要になる場合があります。
+                 # より永続的な解決策としては、Seleniumなどのヘッドレスブラウザでログイン処理を自動化する方法があります。 通知設定 (環境変数から取得することを推奨)
 SENDER_EMAIL = os.getenv('SENDER_EMAIL')
 SENDER_PASSWORD = os.getenv('SENDER_PASSWORD') # アプリパスワードなど
 RECEIVER_EMAIL = os.getenv('RECEIVER_EMAIL')
@@ -30,24 +28,29 @@ def get_stock_status():
         soup = BeautifulSoup(response.text, 'html.parser')
 
         # 在庫状況を示す要素を特定（これはウェブサイトの構造によって変わります）
-        # 例: 「在庫なし」というテキストがあるか、特定のクラスを持つ要素があるかなど
-        # 今回のサイトではログインしないと在庫状況が見えないため、仮のロジックを記述します。
-        # 実際のサイト構造に合わせて調整が必要です。
-        # ログイン後のページで「買い物カゴに入れる」ボタンの有無や、価格表示の有無などを確認してください。
+        # 例: 「在庫なし」というテキストがあるか、特定のクラスを持つ要素        # ログイン後のページで「買い物カゴに入れる」ボタンの有無や、価格表示の有無などを確認してください。
+        # 提供されたHTMLから、ログイン後のページでは商品情報がdataLayerに格納されていることが確認できます。
+        # また、価格が表示されている場合は在庫ありと判断できます。
+        # 今回のHTMLでは「価格：ログイン後表示」ではなく、具体的な価格が表示されています。
+        # 在庫なしの場合の表示はHTMLからは確認できませんが、一般的には「在庫なし」というテキストや、
+        # 「買い物カゴに入れる」ボタンが非表示になるなどの変化があります。
         
-        # 仮のロジック：ログイン後に「買い物カゴに入れる」ボタンがあれば在庫ありと判断
-        add_to_cart_button = soup.find('a', class_='btn-cart') # 実際のクラス名を確認してください
-        if add_to_cart_button and '買い物カゴに入れる' in add_to_cart_button.text:
+        # 価格が表示されているかを確認
+        price_element = soup.find("span", class_="item-price__num")
+        if price_element and price_element.text.strip() != "":
             return '在庫あり'
-        elif '価格：ログイン後表示' in response.text: # ログイン前の表示
+        
+        # その他の在庫なしを示す要素のチェック（必要に応じて追加）
+        # 例: no_stock_message = soup.find('div', class_='no-stock-message')
+        # if no_stock_message:
+        #     return '在庫なし'
+
+        # ログイン前の表示「価格：ログイン後表示」がある場合
+        if '価格：ログイン後表示' in response.text:
             print("ログインが必要です。または、ログイン後の在庫表示要素を特定できませんでした。")
             return 'ログイン必要'
-        else:
-            # ここに「在庫なし」を示す要素のチェックを追加
-            # 例: no_stock_message = soup.find('div', class_='no-stock-message')
-            # if no_stock_message:
-            #     return '在庫なし'
-            return '在庫なし' # デフォルトで在庫なしと仮定
+        
+        return '在庫なし' # デフォルトで在庫なしと仮定
 
     except requests.exceptions.RequestException as e:
         print(f"ウェブページの取得中にエラーが発生しました: {e}")
