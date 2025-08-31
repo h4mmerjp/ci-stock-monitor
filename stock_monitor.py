@@ -297,7 +297,6 @@ def main():
     
     # 在庫ありの商品リスト
     in_stock_products = []
-    changed_products = []
     error_products = []
     
     # 各商品の在庫状況をチェック
@@ -311,20 +310,10 @@ def main():
             error_products.append({"url": product_url, "error": current_status})
             continue
         
-        # 前回の状況と比較
-        last_status = last_status_dict.get(product_url, "初回")
-        
-        if current_status != last_status:
-            changed_products.append({
-                "url": product_url,
-                "old_status": last_status,
-                "new_status": current_status
-            })
-            print(f"在庫状況が変化: {last_status} -> {current_status}")
-        
         # 在庫ありの商品を記録
         if current_status == "在庫あり":
             in_stock_products.append(product_url)
+            print(f"在庫あり: {product_url}")
 
     # 現在の状況を保存
     save_current_status(current_status_dict)
@@ -337,20 +326,22 @@ def main():
             f"以下の商品で在庫状況取得エラーが発生しました:\n\n{error_urls}\n\nスクリプトの実行環境またはログイン情報を確認してください。"
         )
     
-    if changed_products:
-        # 変化があった商品の通知
-        change_summary = []
-        for item in changed_products:
-            change_summary.append(f"- {item['url']}: {item['new_status']}")
+    # 在庫ありの商品が1つ以上ある場合に通知
+    if in_stock_products:
+        # 在庫ありの商品リストを作成
+        in_stock_summary = []
+        for product_url in in_stock_products:
+            in_stock_summary.append(f"- {product_url}")
         
-        change_text = "\n".join(change_summary)
+        in_stock_text = "\n".join(in_stock_summary)
         
-        subject = "CI Medical 在庫状況変化通知"
-        body = f"以下の商品で在庫状況が変化しました:\n\n{change_text}"
+        subject = "🎉 CI Medical 在庫通知！"
+        body = f"以下の商品で在庫があります！\n\n{in_stock_text}\n\n今すぐ確認して購入を検討してください。"
         
         send_email_notification(subject, body)
+        print(f"在庫ありの商品 {len(in_stock_products)}件について通知を送信しました。")
     else:
-        print("在庫状況に変化はありませんでした。")
+        print("在庫ありの商品はありませんでした。")
     
     # GitHub Actions用に在庫ありの商品があるかを記録
     if in_stock_products:
