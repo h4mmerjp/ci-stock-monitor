@@ -2,9 +2,8 @@ name: CI Medical Stock Monitor
 
 on:
   schedule:
-    # 毎日午前9時と午後5時に実行 (UTC)
-    # 日本時間では毎日午後6時と午前2時
-    - cron:  '0 0,8 * * *'
+    # 毎時間実行 (UTC)
+    - cron:  '0 * * * *'
   workflow_dispatch:
 
 jobs:
