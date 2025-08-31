@@ -52,9 +52,12 @@ def get_stock_status_with_selenium():
 
         print("ログインページにアクセス中...")
         driver.get(LOGIN_URL)
+
         WebDriverWait(driver, 30).until(
             EC.presence_of_element_located((By.NAME, 'customer[email]'))
         )
+
+
 
         # ログインボタンが表示されるまで待機
         WebDriverWait(driver, 30).until(
@@ -69,13 +72,16 @@ def get_stock_status_with_selenium():
         driver.find_element(By.CSS_SELECTOR, "button[type=\"submit\"]").click()
 
         print("ログイン後、商品ページにアクセス中...")
-        WebDriverWait(driver, 20).until(
-            EC.url_to_be(PRODUCT_URL) # ログイン後に商品ページにリダイレクトされることを期待
+        # ログイン後に商品ページにリダイレクトされることを期待し、商品ページの特定の要素が出現するまで待機
+        WebDriverWait(driver, 30).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, "h1.item-name")) # 商品名のh1タグを待機
         )
+
         driver.get(PRODUCT_URL) # 念のため再度商品ページにアクセス
-        WebDriverWait(driver, 10).until(
+        WebDriverWait(driver, 30).until(
             EC.presence_of_element_located((By.TAG_NAME, "body"))
         )
+
 
         # 業種選択のポップアップが表示された場合、閉じる
         try:
