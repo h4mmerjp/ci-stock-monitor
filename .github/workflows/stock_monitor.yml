@@ -1,3 +1,4 @@
+
 name: CI Medical Stock Monitor
 
 on:
@@ -35,7 +36,6 @@ jobs:
         CI_MEDICAL_PASSWORD: ${{ secrets.CI_MEDICAL_PASSWORD }}
         PRODUCT_URL: https://www.ci-medical.com/dental/catalog_item/801Y697
         LOGIN_URL: https://www.ci-medical.com/login
-      id: run_script
       run: |
         python stock_monitor.py
         echo "status=$(cat last_stock_status.txt)" >> $GITHUB_OUTPUT
