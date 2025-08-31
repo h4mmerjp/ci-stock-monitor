@@ -1,4 +1,3 @@
-
 name: CI Medical Stock Monitor
 
 on:
@@ -11,6 +10,7 @@ on:
 jobs:
   monitor_stock:
     runs-on: ubuntu-latest
+    timeout-minutes: 15  # タイムアウトを15分に延長
 
     steps:
     - name: Checkout repository
@@ -35,10 +35,14 @@ jobs:
         CI_MEDICAL_USERNAME: ${{ secrets.CI_MEDICAL_USERNAME }}
         CI_MEDICAL_PASSWORD: ${{ secrets.CI_MEDICAL_PASSWORD }}
         PRODUCT_URL: https://www.ci-medical.com/dental/catalog_item/801Y697
-        LOGIN_URL: https://www.ci-medical.com/login
+        LOGIN_URL: https://www.ci-medical.com/accounts/sign_in
       run: |
         python stock_monitor.py
-        echo "status=$(cat last_stock_status.txt)" >> $GITHUB_OUTPUT
+        if [ -f last_stock_status.txt ]; then
+          echo "status=$(cat last_stock_status.txt)" >> $GITHUB_OUTPUT
+        else
+          echo "status=エラー" >> $GITHUB_OUTPUT
+        fi
 
     - name: Create Issue on Stock Available
       if: success() && steps.run_script.outputs.status == '在庫あり'
@@ -52,5 +56,14 @@ jobs:
             body: 'CI Medicalの製品ページ (${{ env.PRODUCT_URL }}) の在庫状況が「在庫あり」に変化しました。\n確認してください。'
           })
 
-
-
+    - name: Create Issue on Error
+      if: failure() || steps.run_script.outputs.status == 'エラー'
+      uses: actions/github-script@v6
+      with:
+        script: |
+          github.rest.issues.create({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            title: 'CI Medical 在庫監視エラー',
+            body: 'CI Medicalの在庫監視でエラーが発生しました。\nログを確認してください。'
+          })
