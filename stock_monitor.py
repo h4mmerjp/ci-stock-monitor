@@ -340,18 +340,12 @@ def main():
         # 変化があった商品の通知
         change_summary = []
         for item in changed_products:
-            change_summary.append(f"- {item['url']}\n  {item['old_status']} → {item['new_status']}")
+            change_summary.append(f"- {item['url']}: {item['new_status']}")
         
         change_text = "\n".join(change_summary)
         
         subject = "CI Medical 在庫状況変化通知"
         body = f"以下の商品で在庫状況が変化しました:\n\n{change_text}"
-        
-        # 在庫ありの商品がある場合、URLリストを追加
-        if in_stock_products:
-            body += "\n\n【現在在庫がある商品】\n"
-            for url in in_stock_products:
-                body += f"- {url}\n"
         
         send_email_notification(subject, body)
     else:
