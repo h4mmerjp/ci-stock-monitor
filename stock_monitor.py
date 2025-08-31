@@ -17,7 +17,7 @@ import time
 
 # 設定
 PRODUCT_URL = os.getenv("PRODUCT_URL", "https://www.ci-medical.com/dental/catalog_item/801Y697")
-LOGIN_URL = os.getenv("LOGIN_URL", "https://www.ci-medical.com/login")
+LOGIN_URL = os.getenv("LOGIN_URL", "https://www.ci-medical.com/accounts/sign_in")
 
 # ログイン情報 (環境変数から取得することを推奨)
 CI_MEDICAL_USERNAME = os.getenv("CI_MEDICAL_USERNAME")
