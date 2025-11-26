@@ -43,8 +43,48 @@ SMTP_PORT = int(os.getenv("SMTP_PORT", 587))
 # 以前の在庫状況を保存するファイル
 LAST_STATUS_FILE = "last_stock_status.json"
 
+def extract_product_name(soup, product_url):
+    """BeautifulSoupオブジェクトから商品名を抽出する
+
+    Args:
+        soup: BeautifulSoupオブジェクト
+        product_url: 商品URL（フォールバック用）
+
+    Returns:
+        str: 商品名（取得できない場合は商品ID）
+    """
+    # 優先順に様々なセレクタを試行
+    selectors = [
+        ("h1", {"class": "product-title"}),
+        ("h1", {"class": "item-title"}),
+        ("h1", None),
+        ("div", {"class": "product-name"}),
+        ("div", {"class": "item-name"}),
+        ("span", {"class": "product-title"}),
+    ]
+
+    for tag, attrs in selectors:
+        element = soup.find(tag, attrs) if attrs else soup.find(tag)
+        if element:
+            product_name = element.text.strip()
+            if product_name:
+                return product_name
+
+    # OGPメタタグから取得を試行
+    og_title = soup.find("meta", {"property": "og:title"})
+    if og_title and og_title.get("content"):
+        return og_title["content"].strip()
+
+    # 最後の手段: 商品IDを返す
+    product_id = product_url.split("/")[-1]
+    return f"商品ID: {product_id}"
+
 def get_stock_status_with_selenium(product_url):
-    """Seleniumを使用してウェブページから在庫状況を取得する"""
+    """Seleniumを使用してウェブページから在庫状況と商品名を取得する
+
+    Returns:
+        tuple: (商品名, 在庫状況) のタプル
+    """
     options = Options()
     options.add_argument("--headless")
     options.add_argument("--no-sandbox")
@@ -159,31 +199,35 @@ def get_stock_status_with_selenium(product_url):
         # ページソースを取得してBeautifulSoupで解析
         soup = BeautifulSoup(driver.page_source, "html.parser")
 
+        # 商品名を取得
+        product_name = extract_product_name(soup, product_url)
+        print(f"商品名: {product_name}")
+
         # **まず在庫なしを示すメッセージを優先的に確認**
         stock_status_element = soup.find("span", class_="product-stock__status")
         if stock_status_element:
             stock_text = stock_status_element.text.strip()
             stock_classes = stock_status_element.get("class", [])
-            
+
             if "在庫なし" in stock_text or "is-soldout" in stock_classes:
                 print(f"在庫なしと判断しました。（在庫状況表示: {stock_text}, クラス: {stock_classes}）")
-                return "在庫なし"
+                return (product_name, "在庫なし")
             elif "在庫あり" in stock_text:
                 print(f"在庫ありと判断しました。（在庫状況表示: {stock_text}）")
-                return "在庫あり"
+                return (product_name, "在庫あり")
 
         # **「在庫なし」ボタンを確認**
         cart_button = soup.find("a", class_="button-cart")
         if cart_button:
             button_text = cart_button.text.strip()
             button_classes = cart_button.get("class", [])
-            
+
             if "在庫なし" in button_text or "button-cart--disabled" in button_classes:
                 print(f"在庫なしと判断しました。（ボタン表示: {button_text}, クラス: {button_classes}）")
-                return "在庫なし"
+                return (product_name, "在庫なし")
             elif "買い物カゴ" in button_text or "カート" in button_text:
                 print(f"在庫ありと判断しました。（ボタン表示: {button_text}）")
-                return "在庫あり"
+                return (product_name, "在庫あり")
 
         # **購入フォームの状態を確認**
         product_form = soup.find("div", class_="product-form")
@@ -191,7 +235,7 @@ def get_stock_status_with_selenium(product_url):
             form_classes = product_form.get("class", [])
             if "is-disabled" in form_classes:
                 print(f"在庫なしと判断しました。（購入フォームが無効化されているため: {form_classes}）")
-                return "在庫なし"
+                return (product_name, "在庫なし")
 
         # **「買い物カゴに入れる」ボタンの有無を確認（より広範囲）**
         cart_button_selectors = [
@@ -207,18 +251,18 @@ def get_stock_status_with_selenium(product_url):
                 button_text = add_to_cart_button.text.strip()
                 if "買い物カゴ" in button_text or "カート" in button_text:
                     print(f"在庫ありと判断しました。（「買い物カゴに入れる」ボタンが見つかったため: {selector}）")
-                    return "在庫あり"
+                    return (product_name, "在庫あり")
 
         # **在庫なしを示すテキストの確認**
         out_of_stock_indicators = [
             "在庫なし", "品切れ", "売り切れ", "完売", "Out of Stock", "Sold Out"
         ]
-        
+
         page_text = soup.get_text()
         for indicator in out_of_stock_indicators:
             if indicator in page_text:
                 print(f"在庫なしと判断しました。（「{indicator}」が見つかったため）")
-                return "在庫なし"
+                return (product_name, "在庫なし")
 
         # **最後の手段として価格表示を確認（ただし、上記の在庫なし条件をクリアした場合のみ）**
         price_selectors = [
@@ -227,26 +271,29 @@ def get_stock_status_with_selenium(product_url):
             {"class": "price"},
             {"class": "item-price"},
         ]
-        
+
         for selector in price_selectors:
             price_element = soup.find("p", selector) or soup.find("span", selector) or soup.find("div", selector)
             if price_element and price_element.text.strip() and "円" in price_element.text:
                 # 価格が表示されているが、上記の在庫確認で在庫なしの兆候がない場合のみ在庫ありとする
                 print(f"在庫ありと判断しました。（価格要素が見つかり、在庫なしの兆候がないため: {selector}）")
-                return "在庫あり"
+                return (product_name, "在庫あり")
 
         print("在庫状況を判定できませんでした。デフォルトで在庫なしとします。")
-        return "在庫なし"
+        return (product_name, "在庫なし")
 
     except TimeoutException as e:
         print(f"要素のロード中にタイムアウトしました: {e}")
-        return "エラー: タイムアウト"
+        product_id = product_url.split("/")[-1]
+        return (f"商品ID: {product_id}", "エラー: タイムアウト")
     except WebDriverException as e:
         print(f"WebDriverエラーが発生しました: {e}")
-        return "エラー: WebDriver"
+        product_id = product_url.split("/")[-1]
+        return (f"商品ID: {product_id}", "エラー: WebDriver")
     except Exception as e:
         print(f"予期せぬエラーが発生しました: {e}")
-        return "エラー: その他"
+        product_id = product_url.split("/")[-1]
+        return (f"商品ID: {product_id}", "エラー: その他")
     finally:
         if driver:
             try:
@@ -303,42 +350,52 @@ def main():
     # 各商品の在庫状況をチェック
     for product_url in PRODUCT_URLS:
         print(f"\n商品チェック中: {product_url}")
-        current_status = get_stock_status_with_selenium(product_url)
-        current_status_dict[product_url] = current_status
-        
+        product_name, current_status = get_stock_status_with_selenium(product_url)
+        current_status_dict[product_url] = {
+            "name": product_name,
+            "status": current_status
+        }
+
         # エラーの場合
         if current_status.startswith("エラー"):
-            error_products.append({"url": product_url, "error": current_status})
+            error_products.append({
+                "url": product_url,
+                "name": product_name,
+                "error": current_status
+            })
             continue
-        
+
         # 在庫ありの商品を記録
         if current_status == "在庫あり":
-            in_stock_products.append(product_url)
-            print(f"在庫あり: {product_url}")
+            in_stock_products.append({
+                "url": product_url,
+                "name": product_name
+            })
+            print(f"在庫あり: {product_name} ({product_url})")
 
     # 現在の状況を保存
     save_current_status(current_status_dict)
     
     # 通知処理
     if error_products:
-        error_urls = "\n".join([f"- {item['url']}: {item['error']}" for item in error_products])
+        error_list = "\n".join([f"- 【{item['name']}】\n  {item['url']}\n  エラー: {item['error']}" for item in error_products])
         send_email_notification(
             "CI Medical 在庫監視エラー",
-            f"以下の商品で在庫状況取得エラーが発生しました:\n\n{error_urls}\n\nスクリプトの実行環境またはログイン情報を確認してください。"
+            f"以下の商品で在庫状況取得エラーが発生しました:\n\n{error_list}\n\nスクリプトの実行環境またはログイン情報を確認してください。"
         )
-    
+
     # 在庫ありの商品が1つ以上ある場合に通知
     if in_stock_products:
         # 在庫ありの商品リストを作成
         in_stock_summary = []
-        for product_url in in_stock_products:
-            in_stock_summary.append(f"- {product_url}")
-        
+        for item in in_stock_products:
+            in_stock_summary.append(f"- 【{item['name']}】\n  {item['url']}")
+
         in_stock_text = "\n".join(in_stock_summary)
-        
+
         subject = "🎉 CI Medical 在庫通知！"
         body = f"以下の商品で在庫があります！\n\n{in_stock_text}\n\n今すぐ確認して購入を検討してください。"
-        
+
         send_email_notification(subject, body)
         print(f"在庫ありの商品 {len(in_stock_products)}件について通知を送信しました。")
     else:
