@@ -41,6 +41,10 @@ RECEIVER_EMAIL = os.getenv("RECEIVER_EMAIL")
 SMTP_SERVER = os.getenv("SMTP_SERVER", "smtp.gmail.com")
 SMTP_PORT = int(os.getenv("SMTP_PORT", 587))
 
+# LINE通知設定
+LINE_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
+LINE_USER_ID = os.getenv("LINE_USER_ID")  # 特定のユーザーに送る場合（オプション）
+
 # 以前の在庫状況を保存するファイル
 LAST_STATUS_FILE = "last_stock_status.json"
 
@@ -354,8 +358,8 @@ def get_stock_status_with_selenium(product_url):
 def send_email_notification(subject, body):
     """メールで通知を送信する"""
     if not SENDER_EMAIL or not SENDER_PASSWORD or not RECEIVER_EMAIL:
-        print("メール通知設定が不完全です。環境変数を確認してください。")
-        return
+        print("メール通知設定が不完全です。スキップします。")
+        return False
 
     msg = MIMEText(body, "plain", "utf-8")
     msg["Subject"] = subject
@@ -368,8 +372,78 @@ def send_email_notification(subject, body):
             server.login(SENDER_EMAIL, SENDER_PASSWORD)
             server.send_message(msg)
         print("メール通知を送信しました。")
+        return True
     except Exception as e:
         print(f"メールの送信中にエラーが発生しました: {e}")
+        return False
+
+def send_line_notification(message):
+    """LINE Messaging APIで通知を送信する"""
+    if not LINE_CHANNEL_ACCESS_TOKEN:
+        print("LINE通知設定が不完全です。スキップします。")
+        return False
+
+    url = "https://api.line.me/v2/bot/message/broadcast"
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {LINE_CHANNEL_ACCESS_TOKEN}"
+    }
+
+    # 特定のユーザーに送る場合
+    if LINE_USER_ID:
+        url = "https://api.line.me/v2/bot/message/push"
+        payload = {
+            "to": LINE_USER_ID,
+            "messages": [
+                {
+                    "type": "text",
+                    "text": message
+                }
+            ]
+        }
+    else:
+        # ブロードキャスト（全友だちに送信）
+        payload = {
+            "messages": [
+                {
+                    "type": "text",
+                    "text": message
+                }
+            ]
+        }
+
+    try:
+        response = requests.post(url, headers=headers, json=payload)
+        if response.status_code == 200:
+            print("LINE通知を送信しました。")
+            return True
+        else:
+            print(f"LINE通知の送信に失敗しました。ステータスコード: {response.status_code}")
+            print(f"レスポンス: {response.text}")
+            return False
+    except Exception as e:
+        print(f"LINE通知の送信中にエラーが発生しました: {e}")
+        return False
+
+def send_notification(subject, body):
+    """メールとLINEの両方で通知を送信する（設定されているものだけ）"""
+    email_sent = False
+    line_sent = False
+
+    # メール通知
+    if SENDER_EMAIL and SENDER_PASSWORD and RECEIVER_EMAIL:
+        email_sent = send_email_notification(subject, body)
+
+    # LINE通知
+    if LINE_CHANNEL_ACCESS_TOKEN:
+        # LINEメッセージを作成（件名 + 本文）
+        line_message = f"{subject}\n\n{body}"
+        line_sent = send_line_notification(line_message)
+
+    if not email_sent and not line_sent:
+        print("警告: メールもLINEも送信されませんでした。環境変数を確認してください。")
+
+    return email_sent or line_sent
 
 def load_last_status():
     """前回の在庫状況を読み込む"""
@@ -429,7 +503,7 @@ def main():
     # 通知処理
     if error_products:
         error_list = "\n".join([f"- 【{item['name']}】\n  {item['url']}\n  エラー: {item['error']}" for item in error_products])
-        send_email_notification(
+        send_notification(
             "CI Medical 在庫監視エラー",
             f"以下の商品で在庫状況取得エラーが発生しました:\n\n{error_list}\n\nスクリプトの実行環境またはログイン情報を確認してください。"
         )
@@ -446,7 +520,7 @@ def main():
         subject = "🎉 CI Medical 在庫通知！"
         body = f"以下の商品で在庫があります！\n\n{in_stock_text}\n\n今すぐ確認して購入を検討してください。"
 
-        send_email_notification(subject, body)
+        send_notification(subject, body)
         print(f"在庫ありの商品 {len(in_stock_products)}件について通知を送信しました。")
     else:
         print("在庫ありの商品はありませんでした。")

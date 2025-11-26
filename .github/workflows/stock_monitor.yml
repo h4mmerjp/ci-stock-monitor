@@ -33,6 +33,8 @@ jobs:
         RECEIVER_EMAIL: ${{ secrets.RECEIVER_EMAIL }}
         CI_MEDICAL_USERNAME: ${{ secrets.CI_MEDICAL_USERNAME }}
         CI_MEDICAL_PASSWORD: ${{ secrets.CI_MEDICAL_PASSWORD }}
+        LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
+        LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
         LOGIN_URL: https://www.ci-medical.com/accounts/sign_in
       run: |
         python stock_monitor.py
@@ -51,7 +53,7 @@ jobs:
             owner: context.repo.owner,
             repo: context.repo.repo,
             title: 'CI Medical 在庫通知: 在庫あり',
-            body: 'CI Medicalで在庫がある商品が見つかりました。\nメールで詳細を確認してください。'
+            body: 'CI Medicalで在庫がある商品が見つかりました。\nメールまたはLINEで詳細を確認してください。'
           })
 
     - name: Create Issue on Error
