@@ -55,27 +55,76 @@ def extract_product_name(soup, product_url):
     """
     # 優先順に様々なセレクタを試行
     selectors = [
+        # h1タグのパターン
         ("h1", {"class": "product-title"}),
         ("h1", {"class": "item-title"}),
+        ("h1", {"class": "product-name"}),
+        ("h1", {"class": "title"}),
+        ("h1", {"class": "item-name"}),
         ("h1", None),
+        # h2タグのパターン
+        ("h2", {"class": "product-title"}),
+        ("h2", {"class": "item-title"}),
+        ("h2", {"class": "product-name"}),
+        # divタグのパターン
+        ("div", {"class": "product-title"}),
         ("div", {"class": "product-name"}),
         ("div", {"class": "item-name"}),
+        ("div", {"class": "item-title"}),
+        ("div", {"class": "product-title__txt"}),
+        ("div", {"class": "product-detail-title"}),
+        # spanタグのパターン
         ("span", {"class": "product-title"}),
+        ("span", {"class": "item-title"}),
+        ("span", {"class": "product-name"}),
+        # pタグのパターン
+        ("p", {"class": "product-title"}),
+        ("p", {"class": "product-name"}),
     ]
 
     for tag, attrs in selectors:
         element = soup.find(tag, attrs) if attrs else soup.find(tag)
         if element:
             product_name = element.text.strip()
-            if product_name:
+            # 空白や改行を正規化
+            product_name = " ".join(product_name.split())
+            # 商品名として有効か確認（長さが3文字以上、URLでない）
+            if product_name and len(product_name) >= 3 and "http" not in product_name.lower():
+                print(f"商品名を取得: {tag} {attrs} -> {product_name}")
                 return product_name
 
     # OGPメタタグから取得を試行
     og_title = soup.find("meta", {"property": "og:title"})
     if og_title and og_title.get("content"):
-        return og_title["content"].strip()
+        product_name = og_title["content"].strip()
+        if product_name:
+            print(f"商品名をOGPタグから取得: {product_name}")
+            return product_name
+
+    # ページタイトルから取得を試行
+    title_tag = soup.find("title")
+    if title_tag:
+        title_text = title_tag.text.strip()
+        # タイトルから不要な部分を除去（例: "商品名 | サイト名"）
+        if " | " in title_text:
+            product_name = title_text.split(" | ")[0].strip()
+        elif " - " in title_text:
+            product_name = title_text.split(" - ")[0].strip()
+        else:
+            product_name = title_text
+
+        if product_name and len(product_name) >= 3:
+            print(f"商品名をページタイトルから取得: {product_name}")
+            return product_name
 
     # 最後の手段: 商品IDを返す
+    print("警告: 商品名を取得できませんでした。利用可能なh1タグを探します...")
+    all_h1 = soup.find_all("h1")
+    if all_h1:
+        print(f"見つかったh1タグの数: {len(all_h1)}")
+        for idx, h1 in enumerate(all_h1[:3]):  # 最初の3つまで表示
+            print(f"  h1[{idx}]: クラス={h1.get('class')}, テキスト={h1.text.strip()[:50]}")
+
     product_id = product_url.split("/")[-1]
     return f"商品ID: {product_id}"
 
