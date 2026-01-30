@@ -3,7 +3,8 @@ name: CI Medical Stock Monitor
 on:
   schedule:
     # 毎時間実行 (UTC)
-    - cron:  '0 * * * *'
+    # 注意: 60日以上アクティビティがないとGitHubにより自動無効化されます
+    - cron: '0 * * * *'
   workflow_dispatch:
 
 jobs:
